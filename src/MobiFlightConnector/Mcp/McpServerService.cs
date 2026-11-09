@@ -8,7 +8,9 @@ using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -110,6 +112,35 @@ namespace MobiFlight.Mcp
                     Log.Instance.log($"[MCP] show_config_page: {path}", LogSeverity.Info);
                     MessageExchange.Instance.Publish(new BrowserMessages.Navigation { Path = path });
                 });
+
+            ControllerTools.Initialize(
+                getConnectedControllers: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return [];
+
+                    return form.execManager.GetConnectedControllers();
+                });
+
+            LogTools.Initialize(getLogTail: count =>
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "log.txt");
+                if (!File.Exists(logPath)) return "(no log file found)";
+
+                using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+                var lines = new List<string>();
+                while (!reader.EndOfStream) { var line = reader.ReadLine(); if (line != null) lines.Add(line); }
+                return string.Join(Environment.NewLine, [.. lines.TakeLast(count)]);
+            });
+
+            ConfigTools.Initialize(getConfigFiles: () =>
+            {
+                var form = _serviceProvider.GetService<MainForm>();
+                if (form is null || !form.IsHandleCreated) return [];
+
+                return form.Invoke(() => form.execManager.Project?.ConfigFiles?.ToList() ?? []);
+            });
         }
     }
 }
