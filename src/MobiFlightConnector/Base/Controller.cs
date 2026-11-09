@@ -20,6 +20,17 @@ namespace MobiFlight.Base
         public string Serial { get; set; }
 
         /// <summary>
+        /// Gets or sets the controller type, e.g. MobiFlight, Joystick or Midi
+        /// </summary>
+        public string Type { get; set; }
+
+        /// <summary>
+        /// Gets or sets the serial COM port for controllers connected via serial port.
+        /// Null for controller types that have no serial port, e.g. joysticks.
+        /// </summary>
+        public string Port { get; set; }
+
+        /// <summary>
         /// Gets the available devices of this controller
         /// </summary>
         public List<DeviceReference> Devices { get; set; } = new List<DeviceReference>();

@@ -54,7 +54,7 @@ namespace MobiFlight.UI
         private static int HUBHOP_UPDATE_DAYS = 7;
 
         private CmdLineParams cmdLineParams;
-        private ExecutionManager execManager;
+        internal ExecutionManager execManager;
         private MessageServer messageServer;
 
         protected Dictionary<string, string> AutoLoadConfigs = new Dictionary<string, string>();
