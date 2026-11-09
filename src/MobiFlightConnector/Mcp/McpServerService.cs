@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using MobiFlight.UI;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -21,6 +22,12 @@ namespace MobiFlight.Mcp
         public const int Port = 51800;
 
         private WebApplication _app;
+        private readonly IServiceProvider _serviceProvider;
+
+        public McpServerService(IServiceProvider serviceProvider)
+        {
+            _serviceProvider = serviceProvider;
+        }
 
         public string Url { get { return $"http://127.0.0.1:{Port}/mcp"; } }
 
@@ -35,6 +42,8 @@ namespace MobiFlight.Mcp
                 builder.WebHost.UseSetting("AllowedHosts", "localhost;127.0.0.1");
 
                 var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+
+                InitializeProjectTools();
                 builder.Services
                     .AddMcpServer(options =>
                     {
@@ -53,6 +62,27 @@ namespace MobiFlight.Mcp
             {
                 Log.Instance.log($"MCP server failed: {ex.Message}", LogSeverity.Error);
             }
+        }
+
+        /// <summary>Lazily resolved: the MainForm may not exist yet when the MCP server starts.</summary>
+        private void InitializeProjectTools()
+        {
+            ProjectTools.Initialize(
+                getRecentProjects: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return [];
+
+                    return form.Invoke(() => form.ProjectListManager.GetProjects());
+                },
+                openProject: filePath =>
+                {
+                    var form = _serviceProvider.GetRequiredService<MainForm>();
+                    if (form.InvokeRequired)
+                        form.BeginInvoke(() => form.LoadConfig(filePath));
+                    else
+                        form.LoadConfig(filePath);
+                });
         }
     }
 }

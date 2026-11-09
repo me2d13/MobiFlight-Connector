@@ -132,7 +132,7 @@ namespace MobiFlight.UI
 
         public ControllerBindingService ControllerBindingService { get; protected set; }
 
-        private ProjectListManager ProjectListManager { get; set; } = new ProjectListManager();
+        internal ProjectListManager ProjectListManager { get; set; } = new ProjectListManager();
 
         private void InitializeLogging()
         {
