@@ -5,6 +5,7 @@ using System;
 using System.Configuration;
 using System.Globalization;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace MobiFlight
@@ -27,6 +28,9 @@ namespace MobiFlight
 
                 var host = CreateHost();
                 var services = host.Services;
+
+                // Host is DI-only (never started), so the MCP server self-starts here.
+                _ = Task.Run(() => services.GetRequiredService<Mcp.McpServerService>().RunAsync());
 
                 // this is needed for correct conversion
                 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -102,6 +106,7 @@ namespace MobiFlight
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<MainForm>();
+                    services.AddSingleton<Mcp.McpServerService>();
                 }).Build();
 
             return host;

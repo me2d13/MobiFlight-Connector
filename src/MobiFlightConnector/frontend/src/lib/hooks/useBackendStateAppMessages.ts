@@ -11,8 +11,9 @@ import {
   ExecutionState,
   HubHopState,
   JoystickDefinitions,
-  MidiControllerDefinitions,
   MobiFlightVariablesUpdate,
+  Navigation,
+  MidiControllerDefinitions,
   ProjectStatus,
   ProSimDataRefDefinitionUpdate,
   RecentProjects,
@@ -29,7 +30,7 @@ import {
   MidiControllerDefinition,
 } from "@/types/definitions"
 import { ProjectInfo } from "@/types/project"
-import { useSearchParams } from "react-router"
+import { useNavigate, useSearchParams } from "react-router"
 import _ from "lodash"
 import { Controller } from "@/types/controller"
 import { useVariableStore } from "@/stores/variableStore"
@@ -39,6 +40,7 @@ import { useQueryClient } from "@tanstack/react-query"
 
 export const useBackendStateAppMessages = () => {
   const [queryParameters] = useSearchParams()
+  const navigate = useNavigate()
 
   const { project, setProject, setProjectStatus, setControllerBindings } =
     useProjectStore()
@@ -70,6 +72,12 @@ export const useBackendStateAppMessages = () => {
     const recentProjects = message.payload as RecentProjects
     setRecentProjects(recentProjects.Projects)
     console.log("List of Recent Projects received", recentProjects.Projects)
+  })
+
+  useAppMessage("Navigation", (message) => {
+    const navigation = message.payload as Navigation
+    console.log("Navigation message received", navigation)
+    navigate(navigation.Path)
   })
 
   useAppMessage("Settings", (message) => {

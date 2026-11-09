@@ -54,7 +54,7 @@ namespace MobiFlight.UI
         private static int HUBHOP_UPDATE_DAYS = 7;
 
         private CmdLineParams cmdLineParams;
-        private ExecutionManager execManager;
+        internal ExecutionManager execManager;
         private MessageServer messageServer;
 
         protected Dictionary<string, string> AutoLoadConfigs = new Dictionary<string, string>();
@@ -132,7 +132,7 @@ namespace MobiFlight.UI
 
         public ControllerBindingService ControllerBindingService { get; protected set; }
 
-        private ProjectListManager ProjectListManager { get; set; } = new ProjectListManager();
+        internal ProjectListManager ProjectListManager { get; set; } = new ProjectListManager();
 
         private void InitializeLogging()
         {

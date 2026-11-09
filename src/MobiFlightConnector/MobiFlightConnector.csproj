@@ -45,6 +45,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- MCP server hosting: WinExe apps don't get ASP.NET Core implicitly -->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="FSUIPCClientDLL" />
 		<PackageReference Include="GraphQL.Client" />
 		<PackageReference Include="GraphQL.Client.Serializer.Newtonsoft" />
@@ -55,6 +60,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
 		<PackageReference Include="Microsoft.Web.WebView2" />
+		<PackageReference Include="ModelContextProtocol.AspNetCore" />
 		<PackageReference Include="Newtonsoft.Json" />
 		<PackageReference Include="Newtonsoft.Json.Schema" />
 		<PackageReference Include="Serilog" />

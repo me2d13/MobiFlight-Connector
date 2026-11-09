@@ -265,7 +265,11 @@ namespace MobiFlight
             InitializeFrontendSubscriptions();
         }
 
-        public void PublishConnectedDevices()
+        /// <summary>
+        /// Collects all controllers currently connected to Connector
+        /// with their type, COM port and available devices
+        /// </summary>
+        public List<Controller> GetConnectedControllers()
         {
             var connectedControllers = new List<Controller>();
 
@@ -275,7 +279,8 @@ namespace MobiFlight
                 connectedControllers.Add(new Controller()
                 {
                     Name = controller.Name,
-                    Serial = controller.Serial
+                    Serial = controller.Serial,
+                    Type = "Arcaze"
                 });
             });
 #endif
@@ -286,6 +291,8 @@ namespace MobiFlight
                 {
                     Name = controller.Name,
                     Serial = controller.Serial,
+                    Type = "MobiFlight",
+                    Port = controller.Port,
                     Devices = controller.GetConnectedInputDevices()
                                         .ToList()
                 });
@@ -297,6 +304,7 @@ namespace MobiFlight
                 {
                     Name = controller.Name,
                     Serial = controller.Serial,
+                    Type = "Joystick",
                     Devices = controller.GetConnectedInputDevices()
                                         .Union(controller.GetAvailableOutputDevices())
                                         .ToList()
@@ -309,11 +317,17 @@ namespace MobiFlight
                 {
                     Name = controller.Name,
                     Serial = controller.Serial,
+                    Type = "Midi",
                     Devices = controller.GetAvailableDevices().ToList<DeviceReference>()
                 });
             });
 
-            MessageExchange.Instance.Publish(new ConnectedControllers() { Controllers = connectedControllers });
+            return connectedControllers;
+        }
+
+        public void PublishConnectedDevices()
+        {
+            MessageExchange.Instance.Publish(new ConnectedControllers() { Controllers = GetConnectedControllers() });
         }
 
         private void FrontendUpdateTimer_Execute(object sender, EventArgs e)
