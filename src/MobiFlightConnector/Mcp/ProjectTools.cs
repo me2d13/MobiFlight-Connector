@@ -3,8 +3,8 @@ using ModelContextProtocol.Server;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
-using System.Windows.Forms;
 
 namespace MobiFlight.Mcp
 {
@@ -23,20 +23,23 @@ namespace MobiFlight.Mcp
     {
         private static Func<List<ProjectInfo>> _getRecentProjects;
         private static Action<string> _openProject;
+        private static Action<string> _showConfigPage;
 
-        public static void Initialize(Func<List<ProjectInfo>> getRecentProjects, Action<string> openProject)
+        public static void Initialize(Func<List<ProjectInfo>> getRecentProjects, Action<string> openProject, Action<string> showConfigPage)
         {
             _getRecentProjects = getRecentProjects;
             _openProject = openProject;
+            _showConfigPage = showConfigPage;
         }
 
         internal static void Reset()
         {
             _getRecentProjects = null;
             _openProject = null;
+            _showConfigPage = null;
         }
 
-        [McpServerTool, Description("Lists the recent MobiFlight projects, like the 'My Projects' home screen.")]
+        [McpServerTool, Description("Lists the recently opened MobiFlight projects, like the 'My Projects' home screen. Note: Connector always has one project loaded (shown in the title bar); this list is about recently used project files.")]
         public static List<RecentProject> ListRecentProjects()
         {
             if (_getRecentProjects is null)
@@ -45,7 +48,7 @@ namespace MobiFlight.Mcp
             return [.. _getRecentProjects().Select(p => new RecentProject(p.Name, p.Sim, p.FilePath))];
         }
 
-        [McpServerTool, Description("Opens a MobiFlight project by file path. The path must match a recent project; call list_recent_projects first.")]
+        [McpServerTool, Description("Loads a MobiFlight project file (.mfproj) into Connector, replacing the currently loaded project - like File > Open. Note: Connector always has one project loaded, and this does not change which page the UI shows. What users call 'opening a project' (seeing its config page) additionally requires navigation in the UI, e.g. the arrow on the home screen project card.")]
         public static ProjectOperationResult OpenProject(string filePath)
         {
             if (_openProject is null)
@@ -54,14 +57,21 @@ namespace MobiFlight.Mcp
             if (string.IsNullOrWhiteSpace(filePath))
                 return new ProjectOperationResult(false, "File path is required.");
 
-            var known = ListRecentProjects().Any(p =>
-                string.Equals(p.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-
-            if (!known)
-                return new ProjectOperationResult(false, $"Unknown project: {filePath}. Call list_recent_projects to get valid paths.");
+            if (!File.Exists(filePath))
+                return new ProjectOperationResult(false, $"File not found: {filePath}");
 
             _openProject(filePath);
-            return new ProjectOperationResult(true, $"Opening project: {filePath}");
+            return new ProjectOperationResult(true, $"Loading project: {filePath}. The UI keeps showing its current page.");
+        }
+
+        [McpServerTool, Description("Shows the project config page in the UI - the same as clicking the arrow on the home screen project card. Call after open_project when the user wants to see the project's configuration.")]
+        public static ProjectOperationResult OpenProjectConfig()
+        {
+            if (_showConfigPage is null)
+                throw new InvalidOperationException("ProjectTools not initialized.");
+
+            _showConfigPage("/config");
+            return new ProjectOperationResult(true, "Showing the project config page.");
         }
     }
 }

@@ -36,6 +36,7 @@ export type AppMessageKey =
   | "LogEntry"
   | "ShutdownConfirmationRequested"
   | "GoldSponsorsUpdate"
+  | "Navigation"
 
 export type AppMessagePayload =
   | StatusBarUpdate
@@ -61,6 +62,7 @@ export type AppMessagePayload =
   | LogEntry
   | ShutdownConfirmationRequested
   | GoldSponsorsUpdate
+  | Navigation
 
 // AppMessage is the message format
 // when receiving messages from the backend
@@ -150,6 +152,10 @@ export interface HubHopState {
 
 export interface RecentProjects {
   Projects: ProjectInfo[]
+}
+
+export interface Navigation {
+  Path: string
 }
 
 export interface ConnectedControllers {

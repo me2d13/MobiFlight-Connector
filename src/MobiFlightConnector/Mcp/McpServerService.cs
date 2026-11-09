@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using MobiFlight.Base;
+using MobiFlight.BrowserMessages;
 using MobiFlight.UI;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -67,9 +70,16 @@ namespace MobiFlight.Mcp
         /// <summary>Lazily resolved: the MainForm may not exist yet when the MCP server starts.</summary>
         private void InitializeProjectTools()
         {
+            // Observers to trace whether publishes actually happen (temporary diagnostics).
+            MessageExchange.Instance.Subscribe<Project>(project =>
+                Log.Instance.log($"[MCP] observed Project publish: {project.FilePath}", LogSeverity.Info));
+            MessageExchange.Instance.Subscribe<BrowserMessages.Outgoing.Notification>(n =>
+                Log.Instance.log($"[MCP] observed Notification: {n.Event} {n.Context}", LogSeverity.Info));
+
             ProjectTools.Initialize(
                 getRecentProjects: () =>
                 {
+                    Log.Instance.log("[MCP] list_recent_projects requested", LogSeverity.Info);
                     var form = _serviceProvider.GetService<MainForm>();
                     if (form is null || !form.IsHandleCreated) return [];
 
@@ -77,11 +87,28 @@ namespace MobiFlight.Mcp
                 },
                 openProject: filePath =>
                 {
+                    // Canonical separators so the recent list doesn't get duplicate entries.
+                    try { filePath = Path.GetFullPath(filePath); }
+                    catch (Exception ex)
+                    {
+                        Log.Instance.log($"[MCP] Could not normalize project path {filePath}: {ex.Message}", LogSeverity.Warn);
+                    }
+                    Log.Instance.log($"[MCP] open_project dispatch: {filePath}", LogSeverity.Info);
                     var form = _serviceProvider.GetRequiredService<MainForm>();
                     if (form.InvokeRequired)
-                        form.BeginInvoke(() => form.LoadConfig(filePath));
+                        form.BeginInvoke(() =>
+                        {
+                            Log.Instance.log("[MCP] open_project executing on UI thread", LogSeverity.Info);
+                            form.LoadConfig(filePath);
+                            Log.Instance.log("[MCP] open_project LoadConfig returned", LogSeverity.Info);
+                        });
                     else
                         form.LoadConfig(filePath);
+                },
+                showConfigPage: path =>
+                {
+                    Log.Instance.log($"[MCP] show_config_page: {path}", LogSeverity.Info);
+                    MessageExchange.Instance.Publish(new BrowserMessages.Navigation { Path = path });
                 });
         }
     }
