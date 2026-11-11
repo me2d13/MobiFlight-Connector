@@ -2315,7 +2315,7 @@ namespace MobiFlight.UI
         /// <summary>
         /// saves the current config to filename
         /// </summary>        
-        private void SaveConfig(string fileName)
+        internal void SaveConfig(string fileName)
         {
             execManager.Project.FilePath = fileName;
             // Issue 1401: Saving the file can result in an UnauthorizedAccessException, so catch any

@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Linq;
 
 namespace MobiFlight.BrowserMessages.Incoming.Converter
 {
@@ -32,8 +33,20 @@ namespace MobiFlight.BrowserMessages.Incoming.Converter
             var type = Type.GetType(typeName);
             if (type == null)
             {
-                throw new JsonSerializationException($"Unknown type: {typeName}");
+                // List the valid discriminators so a failed attempt is self-correcting
+                // (e.g. for MCP clients editing configs: the name is the class name,
+                // "Transformation", not "Transform").
+                var validTypes = typeof(ModifierBase).Assembly.GetTypes()
+                    .Where(t => typeof(ModifierBase).IsAssignableFrom(t) && !t.IsAbstract && t.IsPublic)
+                    .Select(t => t.Name)
+                    .OrderBy(n => n);
+                throw new JsonSerializationException($"Unknown modifier type: \"{jsonObject["Type"]?.ToString()}\". Valid types are: {string.Join(", ", validTypes)}.");
             }
+
+            // "Type" is the discriminator written by WriteJson, not a settable member of the
+            // modifier classes - drop it before Populate so strict deserializers
+            // (MissingMemberHandling.Error, used by the MCP update tool) do not reject it.
+            jsonObject.Remove("Type");
 
             var modifier = Activator.CreateInstance(type) as ModifierBase;
             serializer.Populate(jsonObject.CreateReader(), modifier);

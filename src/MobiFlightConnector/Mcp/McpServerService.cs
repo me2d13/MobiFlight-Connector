@@ -53,6 +53,29 @@ namespace MobiFlight.Mcp
                     .AddMcpServer(options =>
                     {
                         options.ServerInfo = new Implementation { Name = "MobiFlight Connector", Version = version };
+
+                        // Compact workflow guidance for clients that surface server instructions.
+                        // Without it an agent has to discover the tool set and JSON conventions by
+                        // trial and error before its first useful call.
+                        options.ServerInstructions =
+                            "MobiFlight Connector inspects and edits the currently loaded flight-sim project. " +
+                            "To change a mapping: get_config_summary (find the item GUID) -> get_config_item_details " +
+                            "(full item JSON) -> update_config_item (send the edited JSON back). The change appears in " +
+                            "the UI immediately but is not written to disk; call save_project only when the user " +
+                            "explicitly asks to save, never automatically after an update. " +
+                            "get_runtime_status reports whether execution is running, whether the simulator is " +
+                            "connected and which aircraft is loaded; start_project_execution and stop_project_execution " +
+                            "are the Run/Stop buttons (use them only when the user asks). While execution is running, " +
+                            "config updates reach the simulator on the next cycle; otherwise changes are UI-only and you " +
+                            "should offer to start execution. " +
+                            "get_config_item_template returns complete example JSON for input items, output items, " +
+                            "modifiers and input actions. create_config_item adds a new mapping and delete_config_item " +
+                            "removes one - same in-memory, unsaved semantics, and use them only when the user asks. " +
+                            "update_config_item replaces the whole item and rejects unknown " +
+                            "field names, so start from the details JSON and change only what you need. In " +
+                            "get_config_item_details output, an omitted Modifiers/Preconditions/ConfigRefs section means " +
+                            "empty; RawValue is the value read from the simulator and Value is the current output after " +
+                            "modifiers (both omitted when empty, present while the execution engine is running).";
                     })
                     // Stateless: no server-to-client requests (sampling, elicitation) needed.
                     .WithHttpTransport(options => options.SessionMode = HttpServerSessionMode.Stateless)
@@ -141,6 +164,144 @@ namespace MobiFlight.Mcp
 
                 return form.Invoke(() => form.execManager.Project?.ConfigFiles?.ToList() ?? []);
             });
+
+            ExecutionTools.Initialize(
+                findConfigItem: guid =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return null;
+
+                    return form.Invoke(() => form.execManager.Project?.ConfigFiles?
+                        .SelectMany(f => f.ConfigItems)
+                        .FirstOrDefault(i => string.Equals(i.GUID, guid, StringComparison.OrdinalIgnoreCase))
+                        as ConfigItem);
+                },
+                updateConfigItem: item =>
+                {
+                    // Same handler the frontend's CommandUpdateConfigItem command runs, but
+                    // invoked synchronously on the UI thread so errors and the return value
+                    // reach the MCP caller instead of vanishing into an async dispatch.
+                    Log.Instance.log($"[MCP] update_config_item: {item.Name} ({item.GUID})", LogSeverity.Info);
+                    var form = _serviceProvider.GetRequiredService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return false;
+
+                    return form.Invoke(() => form.execManager.HandleCommandUpdateConfigItem(item));
+                },
+                addConfigItem: item =>
+                {
+                    Log.Instance.log($"[MCP] create_config_item: {item.Name} ({item.GUID})", LogSeverity.Info);
+                    var form = _serviceProvider.GetRequiredService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return false;
+
+                    return form.Invoke(() => form.execManager.HandleCommandAddConfigItem(item));
+                },
+                deleteConfigItem: guid =>
+                {
+                    Log.Instance.log($"[MCP] delete_config_item: {guid}", LogSeverity.Info);
+                    var form = _serviceProvider.GetRequiredService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return false;
+
+                    return form.Invoke(() => form.execManager.HandleCommandDeleteConfigItem(guid));
+                },
+                isExecutionStarted: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return false;
+
+                    return form.Invoke(() => form.execManager.IsStarted());
+                },
+                triggerInputEvent: e =>
+                {
+                    Log.Instance.log($"[MCP] execute_input_action dispatch: {e.GetMsgEventLabel()}", LogSeverity.Info);
+                    _serviceProvider.GetRequiredService<MainForm>().execManager.TriggerInputEvent(e);
+                },
+                saveProject: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return ("MobiFlight Connector is not ready.", null);
+
+                    return form.Invoke<(string Error, string FilePath)>(() =>
+                    {
+                        var filePath = form.execManager.Project?.FilePath;
+                        if (string.IsNullOrEmpty(filePath))
+                            return ("The loaded project has never been saved to disk - there is no file path to save to. Open or save a project file first.", null);
+
+                        Log.Instance.log($"[MCP] save_project: {filePath}", LogSeverity.Info);
+                        form.SaveConfig(filePath);
+                        return (null, filePath);
+                    });
+                });
+
+            RuntimeTools.Initialize(
+                getRuntimeStatus: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated) return null;
+
+                    return form.Invoke(() =>
+                    {
+                        var execManager = form.execManager;
+                        // SimAvailable() also refreshes FlightSim.FlightSimType/ConnectionMethod,
+                        // so read them only after this call.
+                        var simAvailable = execManager.SimAvailable();
+
+                        return new RuntimeStatus(
+                            ProjectRunning: execManager.IsStarted(),
+                            SimAvailable: simAvailable,
+                            SimConnected: execManager.SimConnected(),
+                            SimType: FlightSim.FlightSimType.ToString(),
+                            SimConnectionMethod: FlightSim.FlightSimConnectionMethod.ToString(),
+                            Aircraft: execManager.CurrentAircraft,
+                            AircraftPath: execManager.CurrentAircraftPath,
+                            ProjectFilePath: execManager.Project?.FilePath,
+                            ProjectName: execManager.Project?.Name,
+                            ProjectHasUnsavedChanges: form.ProjectHasUnsavedChanges,
+                            ProjectAircraft: execManager.Project?.Aircraft?.ToList() ?? []);
+                    });
+                },
+                startProjectExecution: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated)
+                        return new ProjectOperationResult(false, "MobiFlight Connector is not ready yet.");
+
+                    return form.Invoke(() =>
+                    {
+                        var execManager = form.execManager;
+                        if (execManager.Project is null)
+                            return new ProjectOperationResult(false, "No project is loaded - open a project before starting execution.");
+
+                        if (execManager.IsStarted())
+                            return new ProjectOperationResult(true, "Project execution is already running.");
+
+                        Log.Instance.log("[MCP] start_project_execution", LogSeverity.Info);
+                        form.StartProjectExecution();
+
+                        if (!execManager.IsStarted())
+                            return new ProjectOperationResult(false, "Project execution did not start - check the MobiFlight log (get_log) for details.");
+
+                        var simNote = execManager.SimConnected()
+                            ? " Outputs now reach the simulator on the next execution cycle."
+                            : " No simulator connection is active, so values will not reach the simulator yet.";
+                        return new ProjectOperationResult(true, "Project execution started." + simNote);
+                    });
+                },
+                stopProjectExecution: () =>
+                {
+                    var form = _serviceProvider.GetService<MainForm>();
+                    if (form is null || !form.IsHandleCreated)
+                        return new ProjectOperationResult(false, "MobiFlight Connector is not ready yet.");
+
+                    return form.Invoke(() =>
+                    {
+                        if (!form.execManager.IsStarted())
+                            return new ProjectOperationResult(true, "Project execution is already stopped.");
+
+                        Log.Instance.log("[MCP] stop_project_execution", LogSeverity.Info);
+                        form.StopExecution();
+                        return new ProjectOperationResult(true, "Project execution stopped. Config changes remain in memory and stay visible in the UI, but nothing is sent to the simulator.");
+                    });
+                });
         }
     }
 }

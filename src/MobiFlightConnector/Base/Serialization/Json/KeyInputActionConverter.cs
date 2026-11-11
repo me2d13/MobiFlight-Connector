@@ -42,6 +42,10 @@ namespace MobiFlight.Base.Serialization.Json
                 {
                     Log.Instance.log($"Failed to convert deprecated keyboard key '{deprecatedKey}' to Keys: {ex.Message}", LogSeverity.Error);
                 }
+
+                // "Key" is a migrated legacy name, not a member of KeyInputAction - drop it so
+                // strict deserializers (MissingMemberHandling.Error) do not reject the payload.
+                jsonObject.Remove("Key");
             }
 
             var action = Activator.CreateInstance(typeof(KeyInputAction)) as InputAction;

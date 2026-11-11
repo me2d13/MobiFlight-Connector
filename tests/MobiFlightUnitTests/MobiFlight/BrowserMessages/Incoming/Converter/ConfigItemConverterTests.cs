@@ -46,6 +46,19 @@ namespace MobiFlight.BrowserMessages.Incoming.Converter.Tests
         }
 
         [TestMethod]
+        public void ReadJson_UnsupportedType_NamesValidTypes()
+        {
+            // Arrange
+            var json = "{\"Type\":\"UnsupportedConfigItem\"}";
+
+            // Act
+            var ex = Assert.ThrowsExactly<NotSupportedException>(() => JsonConvert.DeserializeObject<ConfigItem>(json));
+
+            // Assert
+            Assert.Contains("InputConfigItem, OutputConfigItem", ex.Message);
+        }
+
+        [TestMethod]
         public void WriteJson_InputConfigItem_SerializesCorrectly()
         {
             var item = new InputConfigItem { Name = "SomeValue" };

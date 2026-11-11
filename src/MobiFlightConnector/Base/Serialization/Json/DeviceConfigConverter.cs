@@ -31,7 +31,8 @@ namespace MobiFlight.Base.Serialization.Json
 
             if (type == null)
             {
-                throw new NotSupportedException($"Unknown device config type: {shortTypeName}");
+                // Name the valid discriminators so a failed attempt is self-correcting.
+                throw new NotSupportedException($"Unknown device config type: \"{shortTypeName}\". Valid types are: {JsonTypeNames.For(typeof(IDeviceConfig))}.");
             }
 
             var configItem = Activator.CreateInstance(type) as IDeviceConfig;

@@ -116,6 +116,21 @@ namespace MobiFlight.BrowserMessages.Incoming.Converter.Tests
         }
 
         [TestMethod()]
+        public void ReadJson_UnknownType_ListsValidTypes()
+        {
+            // Arrange - "Transform" is the plausible-but-wrong name for Transformation
+            var json = "{\"Type\":\"Transform\"}";
+
+            // Act
+            var ex = Assert.ThrowsExactly<JsonSerializationException>(
+                () => JsonConvert.DeserializeObject<InputAction>(json, _serializerSettings));
+
+            // Assert
+            Assert.Contains("Transform", ex.Message);
+            Assert.Contains("MSFS2020EventIdInputAction", ex.Message);
+        }
+
+        [TestMethod()]
         public void ReadJsonTest()
         {
             foreach (var type in _inputActionTypes)
