@@ -1,4 +1,5 @@
-﻿using MobiFlight.InputConfig;
+﻿using MobiFlight.Base.Serialization.Json;
+using MobiFlight.InputConfig;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -27,12 +28,14 @@ namespace MobiFlight.BrowserMessages.Incoming.Converter
             }
 
             var jsonObject = JObject.Load(reader);
-            var typeName = $"MobiFlight.InputConfig.{jsonObject["Type"]?.ToString()}";
+            var shortTypeName = jsonObject["Type"]?.ToString();
+            var typeName = $"MobiFlight.InputConfig.{shortTypeName}";
 
             var type = Type.GetType(typeName);
             if (type == null)
             {
-                throw new JsonSerializationException($"Unknown type: {typeName}");
+                // Name the valid discriminators so a failed attempt is self-correcting.
+                throw new JsonSerializationException($"Unknown input action type: \"{shortTypeName}\". Valid types are: {JsonTypeNames.For(typeof(InputAction))}.");
             }
 
             var action = Activator.CreateInstance(type) as InputAction;

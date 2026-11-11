@@ -3,7 +3,11 @@ using MobiFlight.InputConfig;
 using MobiFlight.Mcp;
 using MobiFlight.OutputConfig;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MobiFlight.Mcp.Tests
 {
@@ -128,6 +132,66 @@ namespace MobiFlight.Mcp.Tests
         {
             // Act & Assert
             Assert.ThrowsExactly<System.ArgumentException>(() => ConfigTools.GetConfigItemDetails("no-such-guid"));
+        }
+
+        #endregion
+
+        #region GetConfigItemTemplate
+
+        [TestMethod()]
+        public void GetConfigItemTemplate_ReturnsAllTemplates_WhenNoNameGiven()
+        {
+            // Act
+            var templates = JObject.Parse(ConfigTools.GetConfigItemTemplate());
+
+            // Assert
+            foreach (var name in new[] { "input_button", "input_encoder", "input_analog", "output", "modifiers", "input_actions" })
+                Assert.IsNotNull(templates[name], $"Missing template \"{name}\".");
+        }
+
+        [TestMethod()]
+        public void GetConfigItemTemplate_ReturnsSingleTemplate_ByName()
+        {
+            // Act
+            var modifiers = JObject.Parse(ConfigTools.GetConfigItemTemplate("modifiers"));
+
+            // Assert
+            var items = modifiers["Items"] as JArray;
+            Assert.IsNotNull(items);
+            Assert.HasCount(6, items);
+            CollectionAssert.AreEquivalent(
+                new[] { "Blink", "Comparison", "Interpolation", "Padding", "Substring", "Transformation" },
+                items.Select(i => (string)i["Type"]).ToArray());
+        }
+
+        [TestMethod()]
+        public void GetConfigItemTemplate_ThrowsArgumentException_WhenNameUnknown()
+        {
+            // Act
+            var ex = Assert.ThrowsExactly<ArgumentException>(() => ConfigTools.GetConfigItemTemplate("nope"));
+
+            // Assert
+            Assert.Contains("input_button", ex.Message);
+        }
+
+        [TestMethod()]
+        public void GetConfigItemTemplate_ItemTemplatesPassStrictDeserialization()
+        {
+            // Arrange - the same strictness update_config_item applies
+            var settings = new JsonSerializerSettings { MissingMemberHandling = MissingMemberHandling.Error };
+
+            // Act
+            var button = JsonConvert.DeserializeObject<ConfigItem>(ConfigTools.GetConfigItemTemplate("input_button"), settings);
+            var encoder = JsonConvert.DeserializeObject<ConfigItem>(ConfigTools.GetConfigItemTemplate("input_encoder"), settings);
+            var analog = JsonConvert.DeserializeObject<ConfigItem>(ConfigTools.GetConfigItemTemplate("input_analog"), settings);
+            var output = JsonConvert.DeserializeObject<ConfigItem>(ConfigTools.GetConfigItemTemplate("output"), settings);
+
+            // Assert
+            Assert.IsInstanceOfType<InputConfigItem>(button);
+            Assert.IsInstanceOfType<InputConfigItem>(encoder);
+            Assert.IsInstanceOfType<InputConfigItem>(analog);
+            Assert.IsInstanceOfType<OutputConfigItem>(output);
+            Assert.HasCount(1, ((OutputConfigItem)output).Modifiers.Items);
         }
 
         #endregion

@@ -582,9 +582,75 @@ namespace MobiFlight.Tests
             _mockSimConnectCache.Raise(x => x.AircraftChanged += null, _mockSimConnectCache.Object, aircraftName);
 
             Assert.AreEqual(aircraftName, eventAircraftName);
+            Assert.AreEqual(aircraftName, _executionManager.CurrentAircraft);
         }
 
-        [TestMethod]
+        [TestMethod()]
+        public void OnAircraftChanged_FSUIPCAndXPlane_KeepsSimConnectAircraftName()
+        {
+            const string simConnectAircraftName = "PMDG 737-800";
+            const string fsuipcAircraftName = "B737";
+
+            _mockXplaneCache.Setup(x => x.IsConnected()).Returns(false);
+            _mockFsuipcCache.Setup(x => x.IsConnected()).Returns(true);
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(true);
+
+            _mockSimConnectCache.Raise(x => x.AircraftChanged += null, _mockSimConnectCache.Object, simConnectAircraftName);
+            _mockFsuipcCache.Raise(x => x.AircraftChanged += null, _mockFsuipcCache.Object, fsuipcAircraftName);
+
+            Assert.AreEqual(simConnectAircraftName, _executionManager.CurrentAircraft);
+        }
+
+        [TestMethod()]
+        public void OnAircraftPathChanged_SimConnectCache_UpdatesCurrentAircraftPath()
+        {
+            // Arrange
+            const string aircraftPath = @"C:\MSFS\Community\pmdg-aircraft-738\aircraft.cfg";
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(true);
+
+            // Act
+            _mockSimConnectCache.Raise(x => x.AircraftPathChanged += null, _mockSimConnectCache.Object, aircraftPath);
+
+            // Assert
+            Assert.AreEqual(aircraftPath, _executionManager.CurrentAircraftPath);
+        }
+
+        [TestMethod()]
+        public void SimCacheClosed_ClearsAircraftInfo_WhenNoSimRemainsConnected()
+        {
+            // Arrange
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(true);
+            _mockSimConnectCache.Raise(x => x.AircraftChanged += null, _mockSimConnectCache.Object, "Cessna 172");
+            _mockSimConnectCache.Raise(x => x.AircraftPathChanged += null, _mockSimConnectCache.Object, @"C:\MSFS\...\aircraft.cfg");
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(false);
+            _executionManager.OnSimCacheClosed += (_, _) => { };
+
+            // Act
+            _mockSimConnectCache.Raise(x => x.Closed += null, _mockSimConnectCache.Object, EventArgs.Empty);
+
+            // Assert
+            Assert.AreEqual(string.Empty, _executionManager.CurrentAircraft);
+            Assert.AreEqual(string.Empty, _executionManager.CurrentAircraftPath);
+        }
+
+        [TestMethod()]
+        public void SimCacheClosed_KeepsAircraftInfo_WhenAnotherSimStillConnected()
+        {
+            // Arrange
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(true);
+            _mockSimConnectCache.Raise(x => x.AircraftChanged += null, _mockSimConnectCache.Object, "Cessna 172");
+            _mockSimConnectCache.Setup(x => x.IsConnected()).Returns(false);
+            _mockXplaneCache.Setup(x => x.IsConnected()).Returns(true);
+            _executionManager.OnSimCacheClosed += (_, _) => { };
+
+            // Act
+            _mockSimConnectCache.Raise(x => x.Closed += null, _mockSimConnectCache.Object, EventArgs.Empty);
+
+            // Assert
+            Assert.AreEqual("Cessna 172", _executionManager.CurrentAircraft);
+        }
+
+        [TestMethod()]
         public void OnAircraftChanged_XPlaneCache_InvokesOnSimAircraftChanged()
         {
             const string aircraftName = "Airbus A330";
@@ -1373,6 +1439,72 @@ namespace MobiFlight.Tests
             Assert.IsNotNull(executors);
             var result2 = executors.Count;
             Assert.AreEqual(0, result2);
+        }
+
+        [TestMethod]
+        public void HandleCommandAddConfigItem_AddsToActiveConfigFile()
+        {
+            // Arrange
+            var project = new Project();
+            project.ConfigFiles.Add(new ConfigFile());
+            _executionManager.Project = project;
+            var item = new InputConfigItem { GUID = "new-1", Name = "New item" };
+
+            // Act
+            var result = _executionManager.HandleCommandAddConfigItem(item);
+
+            // Assert
+            Assert.IsTrue(result);
+            Assert.HasCount(1, _executionManager.ConfigItems);
+            Assert.AreSame(item, _executionManager.ConfigItems[0]);
+        }
+
+        [TestMethod]
+        public void HandleCommandAddConfigItem_ReturnsFalse_WhenGuidAlreadyExists()
+        {
+            // Arrange
+            var project = new Project();
+            var configFile = new ConfigFile();
+            configFile.ConfigItems.Add(new InputConfigItem { GUID = "dup", Name = "Existing" });
+            project.ConfigFiles.Add(configFile);
+            _executionManager.Project = project;
+
+            // Act
+            var result = _executionManager.HandleCommandAddConfigItem(new InputConfigItem { GUID = "dup", Name = "Second" });
+
+            // Assert
+            Assert.IsFalse(result);
+            Assert.HasCount(1, _executionManager.ConfigItems);
+        }
+
+        [TestMethod]
+        public void HandleCommandDeleteConfigItem_RemovesItemFromOwningConfigFile()
+        {
+            // Arrange
+            var project = new Project();
+            var configFile = new ConfigFile();
+            configFile.ConfigItems.Add(new InputConfigItem { GUID = "del-1", Name = "To delete" });
+            project.ConfigFiles.Add(configFile);
+            _executionManager.Project = project;
+
+            // Act
+            var result = _executionManager.HandleCommandDeleteConfigItem("del-1");
+
+            // Assert
+            Assert.IsTrue(result);
+            Assert.IsEmpty(_executionManager.ConfigItems);
+        }
+
+        [TestMethod]
+        public void HandleCommandDeleteConfigItem_ReturnsFalse_WhenGuidUnknown()
+        {
+            // Arrange
+            var project = new Project();
+            project.ConfigFiles.Add(new ConfigFile());
+            _executionManager.Project = project;
+
+            // Act & Assert
+            Assert.IsFalse(_executionManager.HandleCommandDeleteConfigItem("missing"));
         }
     }
 }

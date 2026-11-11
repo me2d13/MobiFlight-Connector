@@ -84,6 +84,21 @@ namespace MobiFlight.Base.Serialization.Json.Tests
         }
 
         [TestMethod()]
+        public void ReadJson_UnknownType_ListsValidTypes()
+        {
+            // Arrange
+            var json = "{\"Type\":\"Nope\"}";
+
+            // Act
+            var ex = Assert.ThrowsExactly<NotSupportedException>(
+                () => JsonConvert.DeserializeObject<Source>(json, _serializerSettings));
+
+            // Assert
+            Assert.Contains("SimConnectSource", ex.Message);
+            Assert.Contains("Nope", ex.Message);
+        }
+
+        [TestMethod()]
         public void ReadJsonTest_NullSource_ReturnsNull()
         {
             // Arrange

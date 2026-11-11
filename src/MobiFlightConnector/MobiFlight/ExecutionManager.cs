@@ -666,15 +666,72 @@ namespace MobiFlight
             return true;
         }
 
-        private void HandleCommandUpdateConfigItem(ConfigItem item)
+        /// <summary>
+        /// Adds a fully-defined config item to the active config file and refreshes UI and engine.
+        /// Returns false when the GUID is already in use. Like CommandAddConfigItem but takes the
+        /// whole item; used synchronously by the MCP server's create_config_item tool.
+        /// </summary>
+        internal bool HandleCommandAddConfigItem(ConfigItem item)
+        {
+            if (item is null) return false;
+            if (Project.ConfigFiles.Count <= ActiveConfigIndex) return false;
+            if (ConfigItems.Any(i => string.Equals(i.GUID, item.GUID, StringComparison.OrdinalIgnoreCase))) return false;
+
+            // Same default the frontend CommandAddConfigItem applies for a new output item.
+            if (item is OutputConfigItem output && output.Source is null)
+                output.Source = SourceFactory.Create(Project.ToProjectInfo().Sim);
+
+            ConfigItems.Add(item);
+            MessageExchange.Instance.Publish(new ConfigValueFullUpdate(ActiveConfigIndex, ConfigItems));
+            // An added input mapping must become visible to InputEventExecutor immediately.
+            OnInputConfigSettingsChanged(item, null);
+            OnConfigHasChanged?.Invoke(new IConfigItem[] { item }, null);
+            return true;
+        }
+
+        /// <summary>
+        /// Removes the config item with the given GUID from whichever config file holds it and
+        /// refreshes UI and engine. Returns false when no item with that GUID exists. Used
+        /// synchronously by the MCP server's delete_config_item tool.
+        /// </summary>
+        internal bool HandleCommandDeleteConfigItem(string guid)
+        {
+            foreach (var configFile in Project.ConfigFiles)
+            {
+                var item = configFile.ConfigItems
+                    .FirstOrDefault(i => string.Equals(i.GUID, guid, StringComparison.OrdinalIgnoreCase));
+                if (item is null) continue;
+
+                configFile.ConfigItems.Remove(item);
+
+                // Only the active config file is rendered by the frontend.
+                if (ReferenceEquals(configFile, Project.ConfigFiles.ElementAtOrDefault(ActiveConfigIndex)))
+                    MessageExchange.Instance.Publish(new ConfigValueFullUpdate(ActiveConfigIndex, ConfigItems));
+
+                OnInputConfigSettingsChanged(this, null); // else InputEventExecutor's cache keeps the deleted item bound
+                OnConfigHasChanged?.Invoke(ConfigItems, null);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Replaces the config item with the given GUID in memory and refreshes UI and engine.
+        /// Returns false when no item with that GUID exists. Runs on the UI thread: normally
+        /// dispatched via CommandUpdateConfigItem (SubscribeOnUiThread), also called directly
+        /// (synchronously, errors observable) by the MCP server's update_config_item tool.
+        /// </summary>
+        internal bool HandleCommandUpdateConfigItem(ConfigItem item)
         {
             var configItemIndex = ConfigItems.FindIndex(i => i.GUID == item.GUID);
-            if (configItemIndex == -1) return;
+            if (configItemIndex == -1) return false;
 
             ConfigItems[configItemIndex] = item;
             MessageExchange.Instance.Publish(new ConfigValuePartialUpdate(item));
             OnInputConfigSettingsChanged(item, null);
             OnConfigHasChanged?.Invoke(new IConfigItem[] { item }, null);
+            return true;
         }
 
         private void ModuleCache_ModuleConnected(object sender, EventArgs e)
@@ -694,12 +751,14 @@ namespace MobiFlight
             }
 
             Log.Instance.log($"Aircraft change detected: [{e}] ({sender.ToString()})", LogSeverity.Info);
+            CurrentAircraft = e ?? string.Empty;
             OnSimAircraftChanged?.Invoke(sender, e);
         }
 
         private void simConnect_AircraftPathChanged(object sender, string e)
         {
             Log.Instance.log($"Aircraft path changed: [{e}]", LogSeverity.Info);
+            CurrentAircraftPath = e ?? string.Empty;
             OnSimAircraftPathChanged?.Invoke(sender, e);
         }
 
@@ -724,7 +783,20 @@ namespace MobiFlight
 
         private void simConnect_Closed(object sender, EventArgs e)
         {
+            ClearAircraftInfoIfSimDisconnected();
             this.OnSimCacheClosed(sender, e);
+        }
+
+        /// <summary>
+        /// Drops the last reported aircraft once no simulator connection remains, so tools and
+        /// UI do not report a plane that is no longer loaded.
+        /// </summary>
+        private void ClearAircraftInfoIfSimDisconnected()
+        {
+            if (SimConnected()) return;
+
+            CurrentAircraft = string.Empty;
+            CurrentAircraftPath = string.Empty;
         }
 
         private void simConnect_Connected(object sender, EventArgs e)
@@ -734,6 +806,7 @@ namespace MobiFlight
 
         private void simConnect_ConnectionLost(object sender, EventArgs e)
         {
+            ClearAircraftInfoIfSimDisconnected();
             this.OnSimCacheConnectionLost(sender, e);
         }
 
@@ -847,6 +920,18 @@ namespace MobiFlight
                 || proSimCache.IsConnected()
                 ;
         }
+
+        /// <summary>
+        /// Last aircraft title reported by the connected simulator. Empty until the simulator
+        /// reports one (and cleared when the simulator disconnects).
+        /// </summary>
+        public string CurrentAircraft { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Last aircraft.cfg path reported by MSFS (the aircraft loaded event). Empty on
+        /// simulators that do not provide it.
+        /// </summary>
+        public string CurrentAircraftPath { get; private set; } = string.Empty;
 
         public bool ModulesAvailable()
         {
@@ -1486,6 +1571,20 @@ namespace MobiFlight
         }
 
 #if MOBIFLIGHT
+        /// <summary>
+        /// Feeds one synthetic device event (e.g. raised by the MCP server's execute_input_action
+        /// tool) through the same funnel real device events use - see mobiFlightCache_OnButtonPressed.
+        /// InputEventArgs must already carry the Controller serial/name and Device name/type of the
+        /// targeted hardware; matching happens by serial + device name, exactly like real events.
+        /// Note: bypasses the controller managers' SyntheticButtonEventGenerator, so HOLD/REPEAT
+        /// classification never happens - only directly classified events (PRESS/RELEASE/LEFT/...)
+        /// reach the configs.
+        /// </summary>
+        public void TriggerInputEvent(InputEventArgs e)
+        {
+            mobiFlightCache_OnButtonPressed(this, e);
+        }
+
         void mobiFlightCache_OnButtonPressed(object sender, InputEventArgs e)
         {
             var updatedInputValues = new Dictionary<string, IConfigItem>();

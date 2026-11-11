@@ -14,12 +14,14 @@ namespace MobiFlight.Base.Serialization.Json
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
             var jsonObject = JObject.Load(reader);
-            var typeName = $"MobiFlight.{(string)jsonObject["Type"]}";
+            var shortTypeName = (string)jsonObject["Type"];
+            var typeName = $"MobiFlight.{shortTypeName}";
 
             var type = Type.GetType(typeName);
             if (type == null)
             {
-                throw new NotSupportedException($"Unknown type: {typeName}");
+                // Name the valid discriminators so a failed attempt is self-correcting.
+                throw new NotSupportedException($"Unknown config item type: \"{shortTypeName}\". Valid types are: {JsonTypeNames.For(typeof(IConfigItem))}.");
             }
 
             // Migration: If ModuleSerial exists but Controller doesn't, convert ModuleSerial to Controller
